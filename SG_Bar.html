@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新加坡 Bar 推荐地图 POI_by Tian</title>
+    <!-- 引入 Leaflet 地图样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #8e44ad; /* 紫色强调 */
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --secondary-text: #666666;
+            
+            /* 渐变色定义：绿 -> 紫 */
+            --grad-start: #00b894; /* Mint Green */
+            --grad-end: #8e44ad;   /* Wisteria Purple */
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-color);
+            overflow: hidden;
+        }
+
+        /* --- Header 样式 --- */
+        header {
+            height: 70px; /* 稍微调小高度 */
+            background: var(--card-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            z-index: 1000;
+        }
+
+        /* 渐变边框容器 */
+        .title-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px; /* 国旗和文字的间距 */
+            padding: 8px 25px;
+            background: white;
+            border-radius: 50px;
+            background-clip: padding-box;
+            border: 2px solid transparent; 
+        }
+
+        /* 边框渐变色：绿到紫 */
+        .title-container::before {
+            content: '';
+            position: absolute;
+            top: 0; right: 0; bottom: 0; left: 0;
+            z-index: -1;
+            margin: -2px;
+            border-radius: inherit;
+            background: linear-gradient(to right, var(--grad-start), var(--grad-end));
+        }
+
+        /* 国旗样式：保持原色，不渐变 */
+        .flag-icon {
+            font-size: 1.4rem;
+            line-height: 1;
+        }
+
+        /* 文字样式：绿紫渐变 */
+        .title-text {
+            font-size: 1.4rem; /* 调小字号 */
+            font-weight: 800;
+            margin: 0;
+            background: linear-gradient(to right, var(--grad-start), var(--grad-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- 布局调整 (65% : 35%) --- */
+        .container {
+            flex: 1;
+            display: flex;
+            height: calc(100vh - 70px);
+        }
+
+        /* 地图区域：占比 65% */
+        #map {
+            flex: 6.5; 
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* 信息区域：占比 35% */
+        #sidebar {
+            flex: 3.5; 
+            background: var(--bg-color);
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            min-width: 350px;
+        }
+
+        /* 欢迎/空状态卡片 */
+        .welcome-card {
+            text-align: center;
+            padding: 50px 20px;
+            color: var(--secondary-text);
+        }
+
+        .welcome-emoji {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            display: block;
+            animation: bounce 2.5s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        /* 详情卡片样式 */
+        .poi-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .poi-header {
+            margin-bottom: 20px;
+            border-bottom: 1px dashed #ddd;
+            padding-bottom: 15px;
+        }
+
+        .poi-title {
+            font-size: 1.6rem;
+            color: var(--primary-color);
+            margin: 8px 0 5px 0;
+            line-height: 1.2;
+        }
+
+        .poi-category {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .cat-cocktail { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
+        .cat-beer { background: linear-gradient(135deg, #f39c12, #e67e22); }
+
+        .info-item {
+            margin-bottom: 18px;
+        }
+
+        .info-label {
+            font-size: 0.8rem;
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .info-content {
+            font-size: 1rem;
+            color: var(--text-color);
+            line-height: 1.5;
+        }
+
+        .highlight-price {
+            color: var(--grad-end); /* 使用紫色 */
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .tag {
+            display: inline-block;
+            background: #eefcf5; /* 淡淡的绿色背景 */
+            color: #2d3436;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-right: 5px;
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+            border: 1px solid #c8f7dc;
+        }
+
+        .insider-box {
+            background: #f3e5f5; /* 淡淡的紫色背景 */
+            border-left: 4px solid #8e44ad;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        
+        .insider-title {
+            font-weight: 700;
+            color: #6a1b9a;
+            margin-bottom: 5px;
+            display: block;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            header { height: auto; padding: 15px; }
+            .title-text { font-size: 1.1rem; }
+            .container { flex-direction: column; }
+            #map { flex: 1; min-height: 50vh; }
+            #sidebar { flex: 1; min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="title-container">
+            <!-- 独立出来的 Emoji，不会被渐变色覆盖 -->
+            <span class="flag-icon">🇸🇬</span>
+            <!-- 带有渐变色的文字 -->
+            <h1 class="title-text">新加坡 Bar 推荐地图 POI_by Tian</h1>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="map"></div>
+        <div id="sidebar">
+            <div class="welcome-card" id="welcome-msg">
+                <span class="welcome-emoji">🌴</span>
+                <h2>Welcome to SG Nightlife</h2>
+                <p style="margin-top: 10px; color: #888; font-size: 0.9rem;">点击左侧地图点位，查看详细情报</p>
+                <div style="margin-top: 25px; display: flex; justify-content: center; gap: 20px;">
+                    <div style="text-align: center;">
+                        <span style="display:block; width:16px; height:16px; background:#9b59b6; border-radius:50%; margin:0 auto 5px;"></span>
+                        <span style="font-size: 0.75rem; font-weight: bold; color: #666;">Cocktail</span>
+                    </div>
+                    <div style="text-align: center;">
+                        <span style="display:block; width:16px; height:16px; background:#f39c12; border-radius:50%; margin:0 auto 5px;"></span>
+                        <span style="font-size: 0.75rem; font-weight: bold; color: #666;">Beer</span>
+                    </div>
+                </div>
+            </div>
+            <div id="poi-details"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. 数据准备
+        const barsData = [
+            // --- Cocktails ---
+            {
+                id: 1,
+                name: "Nutmeg & Clove",
+                type: "cocktail",
+                lat: 1.2968, lng: 103.8546,
+                address: "8 Purvis St, Singapore",
+                style: "🇸🇬 新加坡本土历史 & 风味",
+                awards: "🏆 No. 6 Asia's 50 Best Bars",
+                price: "S$26/杯",
+                menu: "季节酒单，有地区特色和文化故事",
+                vibe: "粉嫩，适合打卡",
+                insider: "Happy Hour 会便宜！必去！"
+            },
+            {
+                id: 2,
+                name: "Jigger & Pony",
+                type: "cocktail",
+                lat: 1.2758, lng: 103.8443,
+                address: "165 Tg Pagar Rd, Amara Hotel",
+                style: "📖 菜单像杂志一样精美，热情好客",
+                awards: "🏆 No. 3 Asia's 50 Best / No. 9 World's 50 Best",
+                price: "S$28/杯",
+                menu: "Espresso Martini (招牌), Ugly Tomatoes",
+                vibe: "热闹、社交感强，服务极其友好",
+                insider: "位置在 Heritage Shophouse 内，常年霸榜，不会踩雷。"
+            },
+            {
+                id: 3,
+                name: "Fura",
+                type: "cocktail",
+                lat: 1.2824, lng: 103.8475,
+                address: "74A Amoy St",
+                style: "♻️ 极具实验性：可持续/环保/另类食材",
+                awards: "🏆 No. 42 Asia's 50 Best",
+                price: "S$23–28/杯",
+                menu: "Jellyfish Martini (水母), 昆虫发酵酒",
+                vibe: "安静，Avant-garde，适合聊天",
+                insider: "很多发酵类小食，口感独特。如果你喜欢猎奇体验，一定要来。"
+            },
+            {
+                id: 4,
+                name: "Native",
+                type: "cocktail",
+                lat: 1.2820, lng: 103.8472,
+                address: "52A Amoy St",
+                style: "🍃 本地原料 + 发酵 + 区域特色",
+                awards: "🏆 No. 45 Asia's 50 Best",
+                price: "S$21–28/杯",
+                menu: "Antz (真的有蚂蚁), Peranakan (娘惹风味)",
+                vibe: "注重风味与手工感",
+                insider: "适合喜欢探索风味、对地区特色文化感兴趣的同学。"
+            },
+            {
+                id: 5,
+                name: "28 HongKong Street",
+                type: "cocktail",
+                lat: 1.2875, lng: 103.8468,
+                address: "28 Hongkong St",
+                style: "🇺🇸 美式 Speakeasy，无招牌",
+                awards: "🏆 Best Legend",
+                price: "S$25-30/杯",
+                menu: "Old Fashioned (多版本), Mac & Cheese Balls",
+                vibe: "低调、安静、有品质",
+                insider: "只有一扇普通的米色门。新加坡地下酒吧文化的开创者。"
+            },
+            {
+                id: 6,
+                name: "Offtrack",
+                type: "cocktail",
+                lat: 1.2870, lng: 103.8485,
+                address: "34 N Canal Rd",
+                style: "🎵 酒吧 + 音乐 + 社交 + 艺术",
+                awards: "🏆 No. 23 Asia's 50 Best",
+                price: "S$25/杯",
+                menu: "Highballs, Roti John (马来肉夹馍改良版)",
+                vibe: "热闹，适合朋友小聚",
+                insider: "喜欢黑胶/电子乐的人一定要来。"
+            },
+            {
+                id: 7,
+                name: "Draftland",
+                type: "cocktail",
+                lat: 1.2967, lng: 103.8545,
+                address: "24 Purvi St",
+                style: "🚰 汲饮鸡尾酒 (On Tap)",
+                awards: "🏆 Top 50 Asia (Brand)",
+                price: "S$18/杯 (便宜！)",
+                menu: "Green Tea Gin, Fancy Iced Tea",
+                vibe: "随意、站立式、吵闹自由",
+                insider: "可以向酒保要求 Sample (试喝)！适合 Pre-drink，出酒极快。"
+            },
+            {
+                id: 8,
+                name: "CÉ LA VI",
+                type: "cocktail",
+                lat: 1.2830, lng: 103.8608,
+                address: "Marina Bay Sands (MBS) 顶楼",
+                style: "🌃 顶级高空景观，《摘金奇缘》既视感",
+                awards: "🏆 Global Icon",
+                price: "S$28-35++",
+                menu: "Singapore Sling, 香槟",
+                vibe: "奢华、游客风、享受夜生活",
+                insider: "通常需要在楼下买 Entry Voucher (约$30含一杯酒)。必须穿戴整齐（禁拖鞋短裤）。"
+            },
+            {
+                id: 9,
+                name: "ATLAS",
+                type: "cocktail",
+                lat: 1.3005, lng: 103.8576,
+                address: "Parkview Square, 600 N Bridge Rd",
+                style: "🎩 哥谭市风格，世界最大金酒塔",
+                awards: "🏆 Art Deco Masterpiece",
+                price: "High Tea $78++ / Cocktails $25++",
+                menu: "Gin Collections",
+                vibe: "极尽奢华，天花板挑高",
+                insider: "⚠️ 很难订位。男士着装要求极严（长裤+包头鞋），晚5点后绝不能穿短裤。"
+            },
+            // --- Beers ---
+            {
+                id: 10,
+                name: "Elixir Code",
+                type: "beer",
+                lat: 1.2780, lng: 103.8375,
+                address: "Blk 125 Bukit Merah Lane 1",
+                style: "🏢 藏在HDB楼下的高分店铺",
+                awards: "Hidden Gem",
+                price: "S$15-20 (估)",
+                menu: "东欧精酿 (爱沙尼亚等), Smoothie Sours",
+                vibe: "邻里感，空间较小 (12人)",
+                insider: "打包带走有10%折扣。允许自带食物（隔壁食阁烧腊绝配）。"
+            },
+            {
+                id: 11,
+                name: "American Taproom",
+                type: "beer",
+                lat: 1.2985, lng: 103.8530, 
+                address: "261 Waterloo St",
+                style: "🇺🇸 40个 Tap，美式风格精酿",
+                awards: "Tap King",
+                price: "S$15-22",
+                menu: "各种美式 IPA, Stout, 正宗 Buffalo Wings",
+                vibe: "美式体育酒吧风，吵闹开心",
+                insider: "汉堡和鸡翅非常正宗，有大电视看比赛。"
+            },
+            {
+                id: 12,
+                name: "Druggist",
+                type: "beer",
+                lat: 1.3115, lng: 103.8605,
+                address: "119 Tyrwhitt Rd",
+                style: "💊 中药铺里的精酿",
+                awards: "Heritage Vibe",
+                price: "S$16-20",
+                menu: "酸啤 (Sour), 野生发酵, 汉堡, 松露鸡翅",
+                vibe: "老式复古南洋装修",
+                insider: "位于'新加坡中药公会'楼下。周日-周四晚 7pm 是 Happy Hour。"
+            },
+            {
+                id: 13,
+                name: "Brewerkz",
+                type: "beer",
+                lat: 1.3060, lng: 103.8270, 
+                address: "Orchard Rendezvous Hotel",
+                style: "🍺 本地历史悠久的精酿品牌",
+                awards: "Multi-Awards Winner",
+                price: "S$15-20",
+                menu: "Golden Ale Fish & Chips, Shogun Burger",
+                vibe: "位置绝佳，装修环境好",
+                insider: "不只是喝酒，餐食搭配非常有灵感。适合聚会。"
+            },
+            {
+                id: 14,
+                name: "LeVeL33",
+                type: "beer",
+                lat: 1.2808, lng: 103.8543,
+                address: "8 Marina Blvd, #33-01",
+                style: "🏙️ 世界最高的城市微酿酒厂",
+                awards: "Best View",
+                price: "S$20++",
+                menu: "Beer Tasting Paddle, 啤酒酵母面包",
+                vibe: "金融区精英风，景色比酒醉人",
+                insider: "拥有俯瞰整个滨海湾的无敌露台视角。适合商务或约会。"
+            }
+        ];
+
+        // 2. 初始化地图
+        const map = L.map('map', {
+            zoomControl: false // 隐藏默认缩放控件
+        }).setView([1.290270, 103.851959], 14);
+
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        // 自定义图标
+        const createIcon = (color, emoji) => {
+            return L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style="background-color:${color}; width:30px; height:30px; border-radius:50%; border:3px solid white; box-shadow:0 3px 8px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-size:14px;">${emoji}</div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15],
+                popupAnchor: [0, -15]
+            });
+        };
+
+        const cocktailIcon = createIcon('#9b59b6', '🍸');
+        const beerIcon = createIcon('#f39c12', '🍺');
+
+        // 3. 渲染 POI
+        barsData.forEach(bar => {
+            const icon = bar.type === 'cocktail' ? cocktailIcon : beerIcon;
+            const marker = L.marker([bar.lat, bar.lng], { icon: icon }).addTo(map);
+
+            marker.bindTooltip(`<b>${bar.name}</b>`, {
+                direction: 'top',
+                offset: [0, -15],
+                opacity: 0.9
+            });
+
+            marker.on('click', () => {
+                updateSidebar(bar);
+                // 稍微偏移以适应 Layout
+                map.flyTo([bar.lat, bar.lng], 16, { animate: true, duration: 0.8 });
+            });
+        });
+
+        // 4. 更新侧边栏
+        function updateSidebar(data) {
+            const sidebar = document.getElementById('sidebar');
+            const welcomeMsg = document.getElementById('welcome-msg');
+            const detailsContainer = document.getElementById('poi-details');
+
+            if(welcomeMsg) welcomeMsg.style.display = 'none';
+
+            const categoryClass = data.type === 'cocktail' ? 'cat-cocktail' : 'cat-beer';
+            const categoryLabel = data.type === 'cocktail' ? 'Cocktail' : 'Beer';
+
+            // 生成 Tags
+            const styleTags = data.style.split(/[\s,，&/]+/).filter(t => t.length > 1 && !['新加坡', '风味'].includes(t))
+                .map(tag => `<span class="tag">#${tag}</span>`).join('');
+
+            const html = `
+                <div class="poi-card">
+                    <div class="poi-header">
+                        <span class="poi-category ${categoryClass}">${categoryLabel}</span>
+                        <h2 class="poi-title">${data.name}</h2>
+                        <div class="info-label">📍 Address</div>
+                        <div class="info-content">${data.address}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">🎨 Style</div>
+                        <div class="info-content" style="margin-bottom:8px;">${data.style}</div>
+                        <div>${styleTags}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">🏆 Awards</div>
+                        <div class="info-content"><b>${data.awards}</b></div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">💰 Price</div>
+                        <div class="info-content highlight-price">${data.price}</div>
+                        <div style="font-size:0.75rem; color:#aaa; margin-top:2px;">*Plus 10% Service Charge + 9% GST</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">🍽️ Menu</div>
+                        <div class="info-content">${data.menu}</div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">✨ Vibe</div>
+                        <div class="info-content">${data.vibe}</div>
+                    </div>
+
+                    <div class="insider-box">
+                        <span class="insider-title">🤫 Insider Info</span>
+                        <div class="info-content">${data.insider}</div>
+                    </div>
+                </div>
+            `;
+
+            detailsContainer.innerHTML = html;
+            sidebar.scrollTop = 0;
+        }
+    </script>
+</body>
+</html>
